@@ -1,0 +1,242 @@
+version: "3.6"
+
+networks:
+  default:
+    external: true
+    name: master-multihost
+    driver: overlay
+
+# TODO: Pinned images for all services
+# TODO: Switch out authelia maybe? And get rid of LDAP
+services:
+  mariadb:
+    image: mariadb:10.5
+    container_name: mariadb
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: unless-stopped
+    volumes:
+      - ./mariadb:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+    ports:
+      - 127.0.0.1:3306:3306
+
+  lms:
+    build: ./_builds/lms
+    container_name: lms
+    volumes:
+      - ./lms/data:/var/lms
+      - ${MEDIA_DIR}/music:/music:ro
+    restart: unless-stopped
+
+  qbittorrent:
+    image: linuxserver/qbittorrent
+    container_name: qbittorrent
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./qbittorrent:/config
+      - ${MEDIA_DIR}/downloads:/downloads
+      - ${MEDIA_DIR}/blackhole:/watch
+    ports:
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+
+  flood:
+    image: jesec/flood:4.6
+    container_name: flood
+    user: 1000:1001
+    command: --allowedpath=/downloads --auth=none --baseuri=/flood --qburl=http://qbittorrent:8080 --qbuser=admin --qbpass=adminadmin
+    environment:
+      HOME: /config
+    volumes:
+      - ./qbittorrent:/config
+      - ${MEDIA_DIR}/downloads:/downloads
+      - ${MEDIA_DIR}/blackhole:/watch
+    restart: unless-stopped
+
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./sonarr:/config
+      - ${MEDIA_DIR}:/media
+    restart: unless-stopped
+
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./radarr:/config
+      - ${MEDIA_DIR}:/media
+    restart: unless-stopped
+
+  bazarr:
+    image: linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./bazarr:/config
+      - ${MEDIA_DIR}:/media
+    restart: unless-stopped
+
+  jackett:
+    image: linuxserver/jackett:latest
+    container_name: jackett
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./jackett:/config
+      - ${MEDIA_DIR}/blackhole:/downloads
+    restart: unless-stopped
+
+  jellyfin:
+    image: linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./jellyfin:/config
+      - ${MEDIA_DIR}:/media
+      - ${STORAGE_DIR}/samba:/samba
+    restart: unless-stopped
+
+  ombi:
+    image: linuxserver/ombi:development
+    container_name: ombi
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./ombi:/config
+    restart: unless-stopped
+
+  nextcloud:
+    image: nextcloud:stable-apache
+    container_name: nextcloud
+    environment:
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_HOST=mariadb
+      - REDIS_HOST=redis
+      - REDIS_HOST_PASSWORD=public
+    volumes:
+      - /mnt/storage/nextcloud:/var/www/html/data
+      - ./nextcloud:/var/www/html
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+      - redis
+
+  nextcloud_cron:
+    image: nextcloud:stable-apache
+    container_name: nextcloud_cron
+    volumes:
+      - /mnt/storage/nextcloud:/var/www/html/data
+      - ./nextcloud:/var/www/html
+    restart: unless-stopped
+    entrypoint: /cron.sh
+    depends_on:
+      - mariadb
+      - redis
+
+  redis:
+    image: redis:6.2.3-alpine3.13
+    container_name: redis
+    command: redis-server --requirepass public
+    restart: unless-stopped
+
+  authelia:
+    image: authelia/authelia:4
+    container_name: authelia
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./authelia:/config
+    restart: unless-stopped
+
+  openldap:
+    image: osixia/openldap:1.4.0
+    container_name: openldap
+    environment:
+      - LDAP_ORGANISATION=${LDAP_ORGANISATION}
+      - LDAP_DOMAIN=${LDAP_DOMAIN}
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}
+      - LDAP_CONFIG_PASSWORD=${LDAP_CONFIG_PASSWORD}
+      - LDAP_READONLY_USER=true
+    volumes:
+      - ./openldap/ldap:/var/lib/ldap
+      - ./openldap/config:/etc/ldap/slapd.d
+    ports:
+      - 389:389
+      - 636:636
+    restart: unless-stopped
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: phpldapadmin
+    environment:
+      - PHPLDAPADMIN_LDAP_HOSTS=openldap
+      - PHPLDAPADMIN_SERVER_PATH="/phpldapadmin"
+      - PHPLDAPADMIN_HTTPS=false~
+    restart: unless-stopped
+
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    environment:
+      - USER_UID=${PUID}
+      - USER_GID=${PGID}
+      - DOMAIN=${GIT_DOMAIN}
+      - SSH_DOMAIN=${GIT_DOMAIN}
+      - ROOT_URL=https://${GIT_DOMAIN}
+      - RUN_MODE=prod
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+
+  onlyoffice:
+    image: onlyoffice/documentserver:6.3
+    container_name: onlyoffice
+    volumes:
+      - ./onlyoffice/logs:/var/log/onlyoffice
+      - ./onlyoffice/data:/var/www/onlyoffice/Data
+      - ./onlyoffice/lib:/var/lib/onlyoffice
+      - ./onlyoffice/db:/var/lib/postgresql
+    restart: unless-stopped
+
+  nfs:
+    image: itsthenetwork/nfs-server-alpine:12
+    container_name: nfs
+    restart: unless-stopped
+    privileged: true
+    environment:
+      - SHARED_DIRECTORY=/share
+      - READ_ONLY=true
+      - PERMITTED=${NFS_PERMITED}
+    volumes:
+      - ${MEDIA_DIR}:/share
+    ports:
+      - 2049:2049

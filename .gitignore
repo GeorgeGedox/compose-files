@@ -1,0 +1,6 @@
+*
+!.gitignore
+!.env.example
+!docker-compose.yml
+!/_builds
+!/_builds/**
