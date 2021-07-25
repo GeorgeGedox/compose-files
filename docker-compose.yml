@@ -1,0 +1,120 @@
+version: "3.6"
+
+networks:
+  default:
+    external: true
+    name: master-multihost
+    driver: overlay
+
+services:
+  swag:
+    image: linuxserver/swag:version-1.17.0
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - URL=${PUBLIC_DOMAIN}
+      - EXTRA_DOMAINS=${INTERNAL_DOMAIN}
+      - SUBDOMAINS=wildcard
+      - DNSPLUGIN=cloudflare
+      - VALIDATION=dns
+      - EMAIL=${EMAIL}
+      - ONLY_SUBDOMAINS=true
+      - STAGING=false
+    volumes:
+      - ./swag:/config
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+
+  homer:
+    image: b4bz/homer:21.07.1
+    container_name: homer
+    environment:
+      - UID=${PUID}
+      - GID=${PGID}
+    volumes:
+      - ./homer:/www/assets
+    restart: unless-stopped
+
+  bitwarden:
+    image: vaultwarden/server:1.22.1
+    container_name: bitwarden
+    environment:
+      - ADMIN_TOKEN=${BITWARDEN_ADMIN_TOKEN}
+      - WEBSOCKET_ENABLED=true
+    volumes:
+      - ./bitwarden:/data
+    restart: unless-stopped
+
+  redbot:
+    image: phasecorex/red-discordbot
+    container_name: redbot
+    restart: unless-stopped
+    environment:
+      - TOKEN=${DISCORD_BOT_TOKEN}
+      - PREFIX=!
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes: 
+      - ./redbot:/data
+
+  adguard:
+    container_name: adguard
+    image: adguard/adguardhome:latest
+    restart: unless-stopped
+    volumes: 
+      - ./adguard/config:/opt/adguardhome/conf
+      - ./adguard/workdir:/opt/adguardhome/work
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 784:784/udp
+
+  scrutiny-web:
+    container_name: scrutiny-web
+    image: analogj/scrutiny:web
+    restart: unless-stopped
+
+  scrutiny-collector:
+    container_name: scrutiny-collector
+    image: analogj/scrutiny:collector
+    restart: unless-stopped
+    environment: 
+      - SCRUTINY_API_ENDPOINT=http://scrutiny-web:8080
+    volumes:
+      - /run/udev:/run/udev:ro
+    cap_add: 
+      - SYS_RAWIO
+    devices: 
+      - /dev/sda
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:8.0.4
+    restart: unless-stopped
+    environment:
+      - GF_PATHS_CONFIG=/var/lib/grafana/grafana.ini
+    volumes:
+      - ./grafana:/var/lib/grafana
+
+  loki:
+    container_name: loki
+    image: grafana/loki:2.2.1
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml
+      - ./loki/data:/data/loki
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.28.1
+    restart: unless-stopped
+    volumes: 
+      - ./prometheus:/etc/prometheus
