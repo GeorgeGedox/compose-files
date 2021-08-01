@@ -118,3 +118,64 @@ services:
     restart: unless-stopped
     volumes: 
       - ./prometheus:/etc/prometheus
+
+  postgresql:
+    image: postgres:12-alpine
+    restart: unless-stopped
+    volumes:
+      - ./postgresql:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${PGSQL_PASSWORD}
+      - POSTGRES_USER=root
+      - POSTGRES_DB=authentik
+      
+  authentik-redis:
+    image: redis:6.2.3-alpine3.13
+    container_name: authentik-redis
+    restart: unless-stopped
+
+  authentik:
+    container_name: authentik
+    image: ghcr.io/goauthentik/server:2021.7.2
+    restart: unless-stopped
+    command: server
+    volumes:
+      - ./authentik/media:/media
+      - ./authentik/custom-templates:/templates
+    environment: 
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=postgresql
+      - AUTHENTIK_POSTGRESQL__USER=root
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${PGSQL_PASSWORD}
+    env_file:
+      - .env
+
+  authentik-worker:
+    container_name: authentik-worker
+    image: ghcr.io/goauthentik/server:2021.7.2
+    restart: unless-stopped
+    command: worker
+    user: root
+    volumes:
+      - ./authentik/media:/media
+      - ./authentik/custom-templates:/templates
+      - ./authentik/backups:/backups
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment: 
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=postgresql
+      - AUTHENTIK_POSTGRESQL__USER=root
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${PGSQL_PASSWORD}
+    env_file:
+      - .env
+
+  authentik-proxy:
+    container_name: authentik-proxy
+    image: ghcr.io/goauthentik/proxy:2021.7.2
+    restart: unless-stopped
+    environment:
+      - AUTHENTIK_HOST=${AUTHENTIK_PROXY__HOST}
+      - AUTHENTIK_INSECURE="false"
+      - AUTHENTIK_TOKEN=${AUTHENTIK_PROXY__TOKEN}
