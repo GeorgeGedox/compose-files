@@ -1,13 +1,13 @@
-version: "3.6"
+version: "3.9"
 
 networks:
-  default:
+  proxy:
     external: true
-    name: master-multihost
+    name: swarm-proxy
     driver: overlay
+  backend:
+    driver: bridge
 
-# TODO: Pinned images for all services
-# TODO: Switch out authelia maybe? And get rid of LDAP
 services:
   mariadb:
     image: mariadb:10.5
@@ -20,14 +20,8 @@ services:
       - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
     ports:
       - 127.0.0.1:3306:3306
-
-  lms:
-    build: ./_builds/lms
-    container_name: lms
-    volumes:
-      - ./lms/data:/var/lms
-      - ${MEDIA_DIR}/music:/music:ro
-    restart: unless-stopped
+    networks:
+      - backend
 
   qbittorrent:
     image: linuxserver/qbittorrent
@@ -44,6 +38,9 @@ services:
       - 6881:6881
       - 6881:6881/udp
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   flood:
     image: jesec/flood:4.6
@@ -57,6 +54,9 @@ services:
       - ${MEDIA_DIR}/downloads:/downloads
       - ${MEDIA_DIR}/blackhole:/watch
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   sonarr:
     image: linuxserver/sonarr:latest
@@ -69,6 +69,8 @@ services:
       - ./sonarr:/config
       - ${MEDIA_DIR}:/media
     restart: unless-stopped
+    networks:
+      - proxy
 
   radarr:
     image: linuxserver/radarr:latest
@@ -81,6 +83,9 @@ services:
       - ./radarr:/config
       - ${MEDIA_DIR}:/media
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   bazarr:
     image: linuxserver/bazarr:latest
@@ -93,6 +98,9 @@ services:
       - ./bazarr:/config
       - ${MEDIA_DIR}:/media
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   jackett:
     image: linuxserver/jackett:latest
@@ -105,19 +113,29 @@ services:
       - ./jackett:/config
       - ${MEDIA_DIR}/blackhole:/downloads
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   jellyfin:
     image: linuxserver/jellyfin:latest
     container_name: jellyfin
+    runtime: nvidia
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
     volumes:
       - ./jellyfin:/config
       - ${MEDIA_DIR}:/media
-      - ${STORAGE_DIR}/samba:/samba
+    devices: 
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card0:/dev/dri/card0
     restart: unless-stopped
+    networks:
+      - proxy
 
   ombi:
     image: linuxserver/ombi:development
@@ -129,6 +147,8 @@ services:
     volumes:
       - ./ombi:/config
     restart: unless-stopped
+    networks:
+      - proxy
 
   nextcloud:
     image: nextcloud:stable-apache
@@ -141,46 +161,37 @@ services:
       - REDIS_HOST=nextcloud_redis
       - REDIS_HOST_PASSWORD=public
     volumes:
-      - /mnt/storage/nextcloud:/var/www/html/data
+      - ${NEXTCLOUD_STORAGE}:/var/www/html/data
       - ./nextcloud:/var/www/html
     restart: unless-stopped
     depends_on:
       - mariadb
       - nextcloud_redis
+    networks:
+      - proxy
+      - backend
 
   nextcloud_cron:
     image: nextcloud:stable-apache
     container_name: nextcloud_cron
     volumes:
-      - /mnt/storage/nextcloud:/var/www/html/data
+      - ${NEXTCLOUD_STORAGE}:/var/www/html/data
       - ./nextcloud:/var/www/html
     restart: unless-stopped
     entrypoint: /cron.sh
     depends_on:
       - mariadb
       - nextcloud_redis
+    networks:
+      - backend
 
   nextcloud_redis:
     image: redis:6.2.3-alpine3.13
     container_name: nextcloud_redis
     command: redis-server --requirepass public
     restart: unless-stopped
-
-  gitea:
-    image: gitea/gitea:latest
-    container_name: gitea
-    environment:
-      - USER_UID=${PUID}
-      - USER_GID=${PGID}
-      - DOMAIN=${GIT_DOMAIN}
-      - SSH_DOMAIN=${GIT_DOMAIN}
-      - ROOT_URL=https://${GIT_DOMAIN}
-      - RUN_MODE=prod
-    volumes:
-      - ./gitea:/data
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
+    networks:
+        - backend
 
   onlyoffice:
     image: onlyoffice/documentserver:6.3
@@ -191,17 +202,57 @@ services:
       - ./onlyoffice/lib:/var/lib/onlyoffice
       - ./onlyoffice/db:/var/lib/postgresql
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
-  nfs:
-    image: itsthenetwork/nfs-server-alpine:12
-    container_name: nfs
+  deemix:
+    image: registry.gitlab.com/bockiii/deemix-docker
+    container_name: deemix
     restart: unless-stopped
-    privileged: true
-    environment:
-      - SHARED_DIRECTORY=/share
-      - READ_ONLY=true
-      - PERMITTED=${NFS_PERMITED}
-    volumes:
-      - ${MEDIA_DIR}:/share
+    environment: 
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes: 
+      - ./deemix:/config
+      - ${MEDIA_DIR}/music:/downloads
+    networks:
+      - proxy
+      - backend
+
+  adguard2:
+    container_name: adguard2
+    image: adguard/adguardhome:latest
+    restart: unless-stopped
+    volumes: 
+      - ./adguard2/config:/opt/adguardhome/conf
+      - ./adguard2/workdir:/opt/adguardhome/work
     ports:
-      - 2049:2049
+      - 53:53/tcp
+      - 53:53/udp
+      - 784:784/udp
+    networks:
+      - proxy
+
+  firefly:
+    container_name: firefly
+    image: fireflyiii/core:latest
+    restart: unless-stopped
+    environment: 
+      - TZ=${TZ}
+      - APP_KEY=${FIREFLY_API_KEY}
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_CONNECTION=mysql
+      - DB_DATABASE=firefly
+      - DB_USERNAME=root
+      - DB_PASSWORD=${MYSQL_PASSWORD}
+      - TRUSTED_PROXIES=**
+      - APP_URL=${FIREFLY_URL}
+    volumes:
+      - ./firefly:/var/www/html/storage/upload
+    depends_on:
+      - mariadb
+    networks:
+      - proxy
+      - backend
