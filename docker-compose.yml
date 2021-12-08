@@ -1,10 +1,15 @@
 version: "3.6"
 
 networks:
-  default:
+  proxy:
     external: true
-    name: master-multihost
+    name: swarm-proxy
     driver: overlay
+  backend:
+    driver: bridge
+
+volumes:
+  prometheus_data: {}
 
 services:
   swag:
@@ -30,6 +35,9 @@ services:
       - 443:443
       - 80:80
     restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   homer:
     image: b4bz/homer:21.07.1
@@ -40,6 +48,8 @@ services:
     volumes:
       - ./homer:/www/assets
     restart: unless-stopped
+    networks:
+      - backend
 
   bitwarden:
     image: vaultwarden/server:1.22.1
@@ -50,6 +60,8 @@ services:
     volumes:
       - ./bitwarden:/data
     restart: unless-stopped
+    networks:
+      - backend
 
   redbot:
     image: phasecorex/red-discordbot
@@ -63,6 +75,8 @@ services:
       - TZ=${TZ}
     volumes: 
       - ./redbot:/data
+    networks:
+    - backend
 
   adguard:
     container_name: adguard
@@ -75,24 +89,22 @@ services:
       - 53:53/tcp
       - 53:53/udp
       - 784:784/udp
+    networks:
+      - backend
 
-  scrutiny-web:
-    container_name: scrutiny-web
-    image: analogj/scrutiny:web
-    restart: unless-stopped
-
-  scrutiny-collector:
-    container_name: scrutiny-collector
-    image: analogj/scrutiny:collector
-    restart: unless-stopped
-    environment: 
-      - SCRUTINY_API_ENDPOINT=http://scrutiny-web:8080
+  adguardhome-sync:
+    image: ghcr.io/linuxserver/adguardhome-sync
+    container_name: adguardhome-sync
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
     volumes:
-      - /run/udev:/run/udev:ro
-    cap_add: 
-      - SYS_RAWIO
-    devices: 
-      - /dev/sda
+      - ./adguard_sync:/config
+    restart: unless-stopped
+    networks:
+      - proxy
+      - backend
 
   grafana:
     container_name: grafana
@@ -102,24 +114,32 @@ services:
       - GF_PATHS_CONFIG=/var/lib/grafana/grafana.ini
     volumes:
       - ./grafana:/var/lib/grafana
+    networks:
+      - backend
 
   loki:
     container_name: loki
-    image: grafana/loki:2.2.1
+    image: grafana/loki:2.4.1
     restart: unless-stopped
     command: -config.file=/etc/loki/config.yaml
     volumes:
       - ./loki/config.yaml:/etc/loki/config.yaml
       - ./loki/data:/data/loki
+    networks:
+      - backend
 
   prometheus:
     container_name: prometheus
     image: prom/prometheus:v2.28.1
     restart: unless-stopped
     volumes: 
+      - prometheus_data:/prometheus
       - ./prometheus:/etc/prometheus
+    networks:
+      - backend
 
   postgresql:
+    container_name: postgresql
     image: postgres:12-alpine
     restart: unless-stopped
     volumes:
@@ -128,15 +148,19 @@ services:
       - POSTGRES_PASSWORD=${PGSQL_PASSWORD}
       - POSTGRES_USER=root
       - POSTGRES_DB=authentik
+    networks:
+      - backend
       
   authentik-redis:
     image: redis:6.2.3-alpine3.13
     container_name: authentik-redis
     restart: unless-stopped
+    networks:
+      - backend
 
   authentik:
     container_name: authentik
-    image: ghcr.io/goauthentik/server:2021.7.2
+    image: ghcr.io/goauthentik/server:2021.10.1
     restart: unless-stopped
     command: server
     volumes:
@@ -150,10 +174,12 @@ services:
       - AUTHENTIK_POSTGRESQL__PASSWORD=${PGSQL_PASSWORD}
     env_file:
       - .env
+    networks:
+      - backend
 
   authentik-worker:
     container_name: authentik-worker
-    image: ghcr.io/goauthentik/server:2021.7.2
+    image: ghcr.io/goauthentik/server:2021.10.1
     restart: unless-stopped
     command: worker
     user: root
@@ -170,12 +196,51 @@ services:
       - AUTHENTIK_POSTGRESQL__PASSWORD=${PGSQL_PASSWORD}
     env_file:
       - .env
+    networks:
+      - backend
 
   authentik-proxy:
     container_name: authentik-proxy
-    image: ghcr.io/goauthentik/proxy:2021.7.2
+    image: ghcr.io/goauthentik/proxy:2021.10.1
     restart: unless-stopped
     environment:
-      - AUTHENTIK_HOST=${AUTHENTIK_PROXY__HOST}
+      - AUTHENTIK_HOST=${AUTHENTIK_OUTPOST__HOST}
       - AUTHENTIK_INSECURE="false"
       - AUTHENTIK_TOKEN=${AUTHENTIK_PROXY__TOKEN}
+    networks:
+      - backend
+
+  authentik-ldap:
+    container_name: authentik-ldap
+    image: ghcr.io/goauthentik/ldap:2021.10.1
+    restart: unless-stopped
+    ports: 
+      - 389:3389
+    environment:
+      - AUTHENTIK_HOST=${AUTHENTIK_OUTPOST__HOST}
+      - AUTHENTIK_INSECURE="false"
+      - AUTHENTIK_TOKEN=${AUTHENTIK_LDAP__TOKEN}
+    networks:
+      - backend
+
+  speedtest:
+    ports:
+      - 9798:9798
+    image: miguelndecarvalho/speedtest-exporter
+    container_name: speedtest
+    restart: unless-stopped
+    networks:
+      - backend
+
+  blackbox:
+    ports:
+      - 9115:9115
+    image: prom/blackbox-exporter
+    container_name: blackbox
+    restart: unless-stopped
+    volumes:
+      - ./blackbox/config:/config
+    command:
+      - '--config.file=/config/blackbox.yml'
+    networks:
+      - backend
