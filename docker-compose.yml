@@ -46,7 +46,7 @@ services:
     image: jesec/flood:4.6
     container_name: flood
     user: 1000:1001
-    command: --allowedpath=/downloads --auth=none --baseuri=/flood --qburl=http://qbittorrent:8080 --qbuser=admin --qbpass=adminadmin
+    command: --allowedpath=/downloads --auth=none --qburl=http://qbittorrent:8080 --qbuser=admin --qbpass=adminadmin
     environment:
       HOME: /config
     volumes:
