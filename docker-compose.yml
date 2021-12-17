@@ -52,7 +52,7 @@ services:
       - backend
 
   bitwarden:
-    image: vaultwarden/server:1.22.1
+    image: vaultwarden/server:1.23.1
     container_name: bitwarden
     environment:
       - ADMIN_TOKEN=${BITWARDEN_ADMIN_TOKEN}
@@ -108,7 +108,7 @@ services:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:8.0.4
+    image: grafana/grafana:8.3.3
     restart: unless-stopped
     environment:
       - GF_PATHS_CONFIG=/var/lib/grafana/grafana.ini
@@ -160,7 +160,7 @@ services:
 
   authentik:
     container_name: authentik
-    image: ghcr.io/goauthentik/server:2021.10.1
+    image: ghcr.io/goauthentik/server:2021.12.1
     restart: unless-stopped
     command: server
     volumes:
@@ -179,7 +179,7 @@ services:
 
   authentik-worker:
     container_name: authentik-worker
-    image: ghcr.io/goauthentik/server:2021.10.1
+    image: ghcr.io/goauthentik/server:2021.12.1
     restart: unless-stopped
     command: worker
     user: root
@@ -201,7 +201,7 @@ services:
 
   authentik-proxy:
     container_name: authentik-proxy
-    image: ghcr.io/goauthentik/proxy:2021.10.1
+    image: ghcr.io/goauthentik/proxy:2021.12.1
     restart: unless-stopped
     environment:
       - AUTHENTIK_HOST=${AUTHENTIK_OUTPOST__HOST}
@@ -212,7 +212,7 @@ services:
 
   authentik-ldap:
     container_name: authentik-ldap
-    image: ghcr.io/goauthentik/ldap:2021.10.1
+    image: ghcr.io/goauthentik/ldap:2021.12.1
     restart: unless-stopped
     ports: 
       - 389:3389
