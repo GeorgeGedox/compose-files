@@ -199,30 +199,6 @@ services:
     networks:
       - backend
 
-  authentik-proxy:
-    container_name: authentik-proxy
-    image: ghcr.io/goauthentik/proxy:2021.12.1
-    restart: unless-stopped
-    environment:
-      - AUTHENTIK_HOST=${AUTHENTIK_OUTPOST__HOST}
-      - AUTHENTIK_INSECURE="false"
-      - AUTHENTIK_TOKEN=${AUTHENTIK_PROXY__TOKEN}
-    networks:
-      - backend
-
-  authentik-ldap:
-    container_name: authentik-ldap
-    image: ghcr.io/goauthentik/ldap:2021.12.1
-    restart: unless-stopped
-    ports: 
-      - 389:3389
-    environment:
-      - AUTHENTIK_HOST=${AUTHENTIK_OUTPOST__HOST}
-      - AUTHENTIK_INSECURE="false"
-      - AUTHENTIK_TOKEN=${AUTHENTIK_LDAP__TOKEN}
-    networks:
-      - backend
-
   speedtest:
     ports:
       - 9798:9798
