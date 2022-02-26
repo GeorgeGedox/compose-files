@@ -256,3 +256,17 @@ services:
     networks:
       - proxy
       - backend
+
+  perforce:
+    container_name: perforce
+    build: ./_builds/perforce
+    restart: unless-stopped
+    volumes:
+      - ./perforce:/data
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - P4USER=${PERFORCE_USER}
+      - P4PASSWD=${PERFORCE_PASS}
+    ports:
+      - 1666:1666
