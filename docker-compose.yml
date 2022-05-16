@@ -117,22 +117,23 @@ services:
       - proxy
       - backend
 
+  # TODO: Temporary disabling gpu transcoding due to switching GPU's and trying to make it work with vgpu_unlock
   jellyfin:
     image: linuxserver/jellyfin:latest
     container_name: jellyfin
-    runtime: nvidia
+    # runtime: nvidia
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
+      # - NVIDIA_VISIBLE_DEVICES=all
+      # - NVIDIA_DRIVER_CAPABILITIES=all
     volumes:
       - ./jellyfin:/config
       - ${MEDIA_DIR}:/media
-    devices: 
-      - /dev/dri/renderD128:/dev/dri/renderD128
-      - /dev/dri/card0:/dev/dri/card0
+    # devices: 
+    #   - /dev/dri/renderD128:/dev/dri/renderD128
+    #   - /dev/dri/card0:/dev/dri/card0
     restart: unless-stopped
     networks:
       - proxy
@@ -256,17 +257,4 @@ services:
     networks:
       - proxy
       - backend
-
-  perforce:
-    container_name: perforce
-    build: ./_builds/perforce
-    restart: unless-stopped
-    volumes:
-      - ./perforce:/data
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - P4USER=${PERFORCE_USER}
-      - P4PASSWD=${PERFORCE_PASS}
-    ports:
-      - 1666:1666
+      
