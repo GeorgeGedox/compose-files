@@ -64,7 +64,7 @@ services:
       - backend
 
   redbot:
-    image: phasecorex/red-discordbot
+    image: phasecorex/red-discordbot:noaudio
     container_name: redbot
     restart: unless-stopped
     environment:
@@ -76,7 +76,27 @@ services:
     volumes: 
       - ./redbot:/data
     networks:
-    - backend
+      - backend
+
+  lavalink:
+    container_name: lavalink
+    image: fredboat/lavalink:master-v3
+    restart: unless-stopped
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml
+    networks:
+      - backend
+
+  musicbot:
+    image: solarft/discord-music-bot:latest
+    container_name: musicbot
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      - lavalink
+    volumes:
+      - ./musicbot/botconfig.js:/usr/src/app/botconfig.js:ro
 
   adguard:
     container_name: adguard
@@ -160,7 +180,7 @@ services:
 
   authentik:
     container_name: authentik
-    image: ghcr.io/goauthentik/server:2022.3.3
+    image: ghcr.io/goauthentik/server:2022.4.1
     restart: unless-stopped
     command: server
     volumes:
@@ -179,7 +199,7 @@ services:
 
   authentik-worker:
     container_name: authentik-worker
-    image: ghcr.io/goauthentik/server:2022.3.3
+    image: ghcr.io/goauthentik/server:2022.4.1
     restart: unless-stopped
     command: worker
     user: root
