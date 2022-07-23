@@ -117,23 +117,22 @@ services:
       - proxy
       - backend
 
-  # TODO: Temporary disabling gpu transcoding due to switching GPU's and trying to make it work with vgpu_unlock
   jellyfin:
-    image: linuxserver/jellyfin:latest
+    image: linuxserver/jellyfin:10.7.7
     container_name: jellyfin
-    # runtime: nvidia
+    runtime: nvidia
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      # - NVIDIA_VISIBLE_DEVICES=all
-      # - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
     volumes:
       - ./jellyfin:/config
       - ${MEDIA_DIR}:/media
-    # devices: 
-    #   - /dev/dri/renderD128:/dev/dri/renderD128
-    #   - /dev/dri/card0:/dev/dri/card0
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card0:/dev/dri/card0
     restart: unless-stopped
     networks:
       - proxy
@@ -192,7 +191,7 @@ services:
     command: redis-server --requirepass public
     restart: unless-stopped
     networks:
-        - backend
+      - backend
 
   onlyoffice:
     image: onlyoffice/documentserver:6.3
@@ -211,10 +210,10 @@ services:
     image: registry.gitlab.com/bockiii/deemix-docker
     container_name: deemix
     restart: unless-stopped
-    environment: 
+    environment:
       - PUID=${PUID}
       - PGID=${PGID}
-    volumes: 
+    volumes:
       - ./deemix:/config
       - ${MEDIA_DIR}/music:/downloads
     networks:
@@ -225,7 +224,7 @@ services:
     container_name: adguard2
     image: adguard/adguardhome:latest
     restart: unless-stopped
-    volumes: 
+    volumes:
       - ./adguard2/config:/opt/adguardhome/conf
       - ./adguard2/workdir:/opt/adguardhome/work
     ports:
@@ -239,7 +238,7 @@ services:
     container_name: firefly
     image: fireflyiii/core:latest
     restart: unless-stopped
-    environment: 
+    environment:
       - TZ=${TZ}
       - APP_KEY=${FIREFLY_API_KEY}
       - DB_HOST=mariadb
@@ -257,4 +256,21 @@ services:
     networks:
       - proxy
       - backend
-      
+
+  firefly_fidi:
+    container_name: firefly_fidi
+    image: fireflyiii/data-importer:latest
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - FIREFLY_III_ACCESS_TOKEN=${FIREFLY_ACESS_TOKEN_IMPORT}
+      - FIREFLY_III_URL=http://firefly:8080
+      - VANITY_URL=${FIREFLY_URL}
+      - NORDIGEN_ID=${NORDIGEN_ID}
+      - NORDIGEN_KEY=${NORDIGEN_KEY}
+      - VERIFY_TLS_SECURITY=false
+    depends_on:
+      - firefly
+    networks:
+      - proxy
+      - backend
